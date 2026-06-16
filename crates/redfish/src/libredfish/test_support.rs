@@ -226,6 +226,7 @@ pub enum RedfishSimAction {
     Power(libredfish::SystemPowerControl),
     BmcReset,
     SetUtcTimezone,
+    SetNtpServers(Vec<String>),
     MachineSetup {
         oem_manager_profiles: libredfish::BiosProfileVendor,
         /// The boot interface the setup call targeted (`None` when the caller
@@ -1816,6 +1817,23 @@ impl Redfish for RedfishSimClient {
                 .unwrap()
                 .actions
                 .push(RedfishSimAction::SetUtcTimezone);
+            Ok(())
+        })
+    }
+
+    fn set_ntp_servers<'a>(
+        &'a self,
+        servers: &'a [String],
+    ) -> libredfish::RedfishFuture<'a, Result<(), RedfishError>> {
+        Box::pin(async move {
+            self.state
+                .lock()
+                .unwrap()
+                .hosts
+                .get_mut(&self._host)
+                .unwrap()
+                .actions
+                .push(RedfishSimAction::SetNtpServers(servers.to_vec()));
             Ok(())
         })
     }
