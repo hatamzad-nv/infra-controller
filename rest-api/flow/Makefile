@@ -24,6 +24,7 @@ gen-nicoapi-pb: ## Generate protobuf files for nico-api access, only needed for 
 # Clean old generated files before regenerating
 	rm -f internal/nicoapi/gen/*.pb.go
 	cd internal/nicoapi && buf generate
+	cd ../ && python3 scripts/check_source_headers.py --fix
 
 gen-doc: ## Generate gRPC API documentation (Markdown for GitLab, HTML for local)
 	@which protoc-gen-doc > /dev/null || go install github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc@latest

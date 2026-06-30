@@ -9143,6 +9143,57 @@ paths:
           description: Describes an error response for 500 Internal Server Error
           $ref: '#/components/responses/GenericHttpError'
       description: Org must have an Infrastructure Provider entity. Machine must belong to the Provider. User must have authorization role with `PROVIDER_ADMIN` suffix. Machine must meet certain criteria to be eligible for deletion.
+  '/v2/org/{org}/nico/machine/{machineId}/power':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+        name: machineId
+        in: path
+        required: true
+        description: ID of the Machine
+    patch:
+      summary: Machine power control
+      tags:
+        - Machine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MachinePowerControlRequest'
+            examples:
+              turn-on:
+                value:
+                  action: 'On'
+              force-restart:
+                value:
+                  action: ForceRestart
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MachinePowerControlResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/GenericHttpError'
+      operationId: machine-power-control-machine
+      description: |-
+        Power control a Machine through NICo Core. The request is authorized,
+        machine-scoped, and proxied to the Machine's owning Site. User must have
+        authorization role with `PROVIDER_ADMIN` suffix.
   '/v2/org/{org}/nico/machine/{machineId}/status-history':
     parameters:
       - schema:
@@ -13544,6 +13595,46 @@ components:
         - CombinedBmcUefi
         - GPU
         - Cx7
+    MachinePowerControlRequest:
+      type: object
+      title: MachinePowerControlRequest
+      description: Request to power control a Machine through NICo Core.
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          description: Power control action to apply.
+          enum:
+            - 'On'
+            - GracefulShutdown
+            - ForceOff
+            - GracefulRestart
+            - ForceRestart
+            - ACPowercycle
+        acknowledgeAttachedInstance:
+          type: boolean
+          description: Acknowledges that an Instance is currently attached to the Machine.
+    MachinePowerControlResponse:
+      type: object
+      title: MachinePowerControlResponse
+      description: Response for a Machine power control request.
+      required:
+        - machineId
+        - action
+        - message
+      properties:
+        machineId:
+          type: string
+          description: ID of the Machine.
+        action:
+          type: string
+          description: Power control action accepted.
+        message:
+          type:
+            - string
+            - 'null'
+          description: Optional message returned by NICo Core.
     InfrastructureProvider:
       description: Infrastructure providers own and manage datacenters
       type: object
