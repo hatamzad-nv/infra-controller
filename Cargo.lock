@@ -1989,6 +1989,7 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "base64",
+ "bmc-mock",
  "bytes",
  "carbide-health-report",
  "carbide-instrument",
