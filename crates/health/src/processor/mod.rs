@@ -20,10 +20,12 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
 
+mod gpu_events; // NEW (keep alphabetical: before health_report)
 mod health_report;
 mod intrusion_events;
 mod leak_events;
 mod rack_leak;
+pub use gpu_events::GpuFaultEventProcessor; // NEW
 pub use health_report::HealthReportProcessor;
 pub use intrusion_events::BmcIntrusionEventProcessor;
 pub use leak_events::LeakEventProcessor;

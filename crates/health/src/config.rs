@@ -549,6 +549,9 @@ pub struct CollectorsConfig {
 
     /// NVUE collector configuration for direct NVUE HTTP(s) polling of NVLink switches
     pub nvue: Configurable<NvueCollectorConfig>,
+
+    /// GPU inventory collector: compares OOB GPU count vs the assigned SKU.
+    pub gpu_inventory: Configurable<GpuInventoryConfig>,
 }
 
 impl Default for CollectorsConfig {
@@ -563,6 +566,7 @@ impl Default for CollectorsConfig {
             nmxt: Configurable::Disabled,
             nmxc: Configurable::Disabled,
             nvue: Configurable::Disabled,
+            gpu_inventory: Configurable::Disabled,
         }
     }
 }
@@ -599,6 +603,21 @@ impl Default for MetricsCollectorConfig {
         Self {
             fetch_interval: Duration::from_secs(120),
             fetch_concurrency: 4,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GpuInventoryConfig {
+    #[serde(with = "humantime_serde")]
+    pub interval: Duration,
+}
+
+impl Default for GpuInventoryConfig {
+    fn default() -> Self {
+        Self {
+            interval: Duration::from_secs(300),
         }
     }
 }
@@ -1334,6 +1353,23 @@ impl Config {
             nmxc.validate()?;
         }
 
+        if self.collectors.gpu_inventory.is_enabled() {
+            if !self.endpoint_sources.carbide_api.is_enabled() {
+                return Err(
+                    "collectors.gpu_inventory requires endpoint_sources.carbide_api to be enabled \
+                     (expected GPU counts are resolved from the machine SKU via the Carbide API)"
+                        .to_string(),
+                );
+            }
+            if !self.sinks.health_report.is_enabled() {
+                return Err(
+                    "collectors.gpu_inventory requires sinks.health_report to be enabled \
+                     (GPU shortage alerts are delivered through the health-report sink)"
+                        .to_string(),
+                );
+            }
+        }
+
         if let Configurable::Enabled(ref otlp) = self.sinks.otlp {
             tonic::transport::Channel::from_shared(otlp.endpoint.clone())
                 .map_err(|_| format!("invalid sinks.otlp.endpoint: {}", otlp.endpoint))?;
@@ -1626,6 +1662,27 @@ username = "root"
             .extract::<Config>();
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_gpu_inventory_requires_carbide_api_and_health_report() {
+        let mut config = Config::default();
+        config.collectors.gpu_inventory = Configurable::Enabled(GpuInventoryConfig::default());
+
+        // Enabled without the Carbide API source -> invalid (can't resolve SKU).
+        config.endpoint_sources.carbide_api = Configurable::Disabled;
+        config.sinks.health_report = Configurable::Enabled(HealthReportSinkConfig::default());
+        assert!(config.validate().is_err());
+
+        // Enabled without the health-report sink -> invalid (alerts go nowhere).
+        config.endpoint_sources.carbide_api =
+            Configurable::Enabled(CarbideApiConnectionConfig::default());
+        config.sinks.health_report = Configurable::Disabled;
+        assert!(config.validate().is_err());
+
+        // Both dependencies present -> valid.
+        config.sinks.health_report = Configurable::Enabled(HealthReportSinkConfig::default());
+        assert!(config.validate().is_ok());
     }
 
     #[test]

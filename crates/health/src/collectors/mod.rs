@@ -18,6 +18,7 @@
 mod discovery;
 mod entity_metrics;
 mod firmware;
+mod gpu_inventory; // NEW
 pub(crate) mod inventory;
 mod leak_detector;
 mod logs;
@@ -30,6 +31,7 @@ mod sensors;
 pub use discovery::{EntityDiscoveryCollector, EntityDiscoveryCollectorConfig};
 pub use entity_metrics::{MetricsCollector, MetricsCollectorConfig};
 pub use firmware::{FirmwareCollector, FirmwareCollectorConfig};
+pub use gpu_inventory::{GpuInventoryCollector, GpuInventoryCollectorConfig};
 pub(crate) use inventory::SharedInventory;
 pub use leak_detector::{LeakDetectorCollector, LeakDetectorCollectorConfig};
 pub(crate) use logs::auto::{AutoFailureBudget, BudgetDecision, FailureKind};
@@ -46,4 +48,4 @@ pub use runtime::{
     IterationResult, PeriodicCollector, StreamMetrics, StreamingCollector,
     StreamingCollectorStartContext, StreamingConnectResult, open_sse_stream,
 };
-pub use sensors::{SensorCollector, SensorCollectorConfig};
+pub use sensors::{SensorCollector, SensorCollectorConfig}; // NEW

@@ -98,6 +98,7 @@ tonic-prost-build = { workspace = true }
 bench-hooks = []
 
 [dev-dependencies]
+bmc-mock = { path = "../bmc-mock" }
 carbide-test-support = { path = "../test-support" }
 criterion = { workspace = true }
 tempfile = { workspace = true }

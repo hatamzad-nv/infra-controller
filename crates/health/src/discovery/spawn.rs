@@ -25,11 +25,12 @@ use crate::bmc::BmcClient;
 use crate::collectors::{
     AutoFailureBudget, BackoffConfig, BudgetDecision, Collector, CollectorStartContext,
     EntityDiscoveryCollector, EntityDiscoveryCollectorConfig, FailureKind, FirmwareCollector,
-    FirmwareCollectorConfig, LeakDetectorCollector, LeakDetectorCollectorConfig, LogsCollector,
-    LogsCollectorConfig, MetricsCollector, MetricsCollectorConfig, NmxcCollector,
-    NmxcCollectorConfig, NmxtCollector, NmxtCollectorConfig, NvueRestCollector,
-    NvueRestCollectorConfig, SensorCollector, SensorCollectorConfig, SseLogCollector,
-    SseLogCollectorConfig, StreamingCollectorStartContext, spawn_gnmi_collector,
+    FirmwareCollectorConfig, GpuInventoryCollector, GpuInventoryCollectorConfig,
+    LeakDetectorCollector, LeakDetectorCollectorConfig, LogsCollector, LogsCollectorConfig,
+    MetricsCollector, MetricsCollectorConfig, NmxcCollector, NmxcCollectorConfig, NmxtCollector,
+    NmxtCollectorConfig, NvueRestCollector, NvueRestCollectorConfig, SensorCollector,
+    SensorCollectorConfig, SseLogCollector, SseLogCollectorConfig, StreamingCollectorStartContext,
+    spawn_gnmi_collector,
 };
 use crate::config::{Configurable, LogCollectionMode, PeriodicLogConfig};
 use crate::endpoint::{BmcEndpoint, EndpointMetadata, SwitchEndpointRole};
@@ -379,6 +380,46 @@ fn spawn_generic_redfish_collectors(
                     "Could not start firmware collector for: {:?}",
                     endpoint.addr
                 )
+            }
+        }
+    }
+
+    if let Configurable::Enabled(gpu_cfg) = &ctx.gpu_inventory_config
+        && let Some(api_client) = &ctx.api_client
+        // GPU inventory validation only applies to machine endpoints (it needs a
+        // machine id + assigned SKU). Skip switch / power-shelf endpoints so we
+        // don't emit machine-target reports that get dropped for lack of context.
+        && matches!(endpoint.metadata, Some(EndpointMetadata::Machine(_)))
+        && !ctx.collectors.contains(CollectorKind::GpuInventory, &key)
+    {
+        let collector_registry = Arc::new(
+            ctx.metrics_manager
+                .create_collector_registry(format!("gpu_inventory_{key}"), metrics_prefix)?,
+        );
+        match Collector::start::<GpuInventoryCollector<BmcClient>>(
+            endpoint_arc.clone(),
+            bmc.clone(),
+            GpuInventoryCollectorConfig {
+                data_sink: data_sink.clone(),
+                api_client: api_client.clone(),
+            },
+            CollectorStartContext {
+                limiter: ctx.limiter.clone(),
+                iteration_interval: gpu_cfg.interval,
+                collector_registry,
+                metrics_manager: ctx.metrics_manager.clone(),
+            },
+        ) {
+            Ok(monitor) => {
+                ctx.collectors
+                    .insert(CollectorKind::GpuInventory, key.clone().into(), monitor);
+            }
+            Err(error) => {
+                tracing::error!(
+                    ?error,
+                    "Could not start GPU inventory collector for: {:?}",
+                    endpoint.addr
+                );
             }
         }
     }

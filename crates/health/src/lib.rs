@@ -44,8 +44,8 @@ use crate::endpoint::{CompositeEndpointSource, EndpointSource, StaticEndpointSou
 use crate::limiter::{BucketLimiter, NoopLimiter, RateLimiter};
 use crate::metrics::{MetricsManager, run_metrics_server};
 use crate::processor::{
-    BmcIntrusionEventProcessor, EventProcessingPipeline, EventProcessor, HealthReportProcessor,
-    LeakEventProcessor, RackLeakProcessor,
+    BmcIntrusionEventProcessor, EventProcessingPipeline, EventProcessor, GpuFaultEventProcessor,
+    HealthReportProcessor, LeakEventProcessor, RackLeakProcessor,
 };
 use crate::sharding::ShardManager;
 use crate::sink::event_mapper::{OpenBmcEventMapper, RedfishEventMapper};
@@ -192,6 +192,11 @@ fn build_data_sink(
 
     if config.sinks.health_report.is_enabled() {
         processors.push(Arc::new(BmcIntrusionEventProcessor::new()));
+    }
+
+    if config.sinks.health_report.is_enabled() {
+        // NEW block
+        processors.push(Arc::new(GpuFaultEventProcessor::new()));
     }
 
     if let Configurable::Enabled(ref leak_detection_cfg) = config.processors.leak_detection {
