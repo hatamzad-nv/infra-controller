@@ -151,6 +151,17 @@ pub async fn assign_static_address(
         );
     }
 
+    // Keep the interface's IP-derived hostname/domain consistent with the new
+    // address, matching every other assignment path. Skipping this leaves a
+    // stale hostname that encodes a now-freed IP and collides with the
+    // fqdn_must_be_unique constraint when the allocator reuses that IP.
+    db::machine_interface::sync_hostname_after_address_assignment(
+        &mut txn,
+        interface_id,
+        target_segment.config.subdomain_id,
+    )
+    .await?;
+
     txn.commit().await?;
 
     let status: rpc::AssignStaticAddressStatus = result.into();
@@ -180,6 +191,14 @@ pub async fn remove_static_address(
         AllocationType::Static,
     )
     .await?;
+
+    // Re-derive the interface's hostname/domain now that the address is gone,
+    // matching the DHCP lease-expiry path. Without this the interface keeps a
+    // hostname pinned to the removed IP.
+    if deleted {
+        db::machine_interface::sync_hostname_after_address_change(&mut txn, interface_id).await?;
+    }
+
     txn.commit().await?;
 
     let status = if deleted {
