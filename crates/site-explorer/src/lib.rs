@@ -2783,12 +2783,23 @@ impl SiteExplorer {
             .await
         {
             Ok(_) => {
-                let mut txn = self.txn_begin().await?;
+                let persist = async {
+                    let mut txn = self.txn_begin().await?;
 
-                db::explored_endpoints::set_last_ipmitool_bmc_reset(endpoint.address, &mut txn)
-                    .await?;
+                    db::explored_endpoints::set_last_ipmitool_bmc_reset(endpoint.address, &mut txn)
+                        .await?;
 
-                txn.commit().await?;
+                    txn.commit().await?;
+
+                    Ok::<(), SiteExplorerError>(())
+                };
+                if let Err(err) = persist.await {
+                    tracing::warn!(
+                        bmc_ip_address = %endpoint.address,
+                        error = %err,
+                        "Site Explorer reset BMC through ipmitool but failed to persist rate-limit timestamp"
+                    );
+                }
 
                 Ok(())
             }
@@ -2812,12 +2823,23 @@ impl SiteExplorer {
             .await
         {
             Ok(_) => {
-                let mut txn = self.txn_begin().await?;
+                let persist = async {
+                    let mut txn = self.txn_begin().await?;
 
-                db::explored_endpoints::set_last_redfish_bmc_reset(endpoint.address, &mut txn)
-                    .await?;
+                    db::explored_endpoints::set_last_redfish_bmc_reset(endpoint.address, &mut txn)
+                        .await?;
 
-                txn.commit().await?;
+                    txn.commit().await?;
+
+                    Ok::<(), SiteExplorerError>(())
+                };
+                if let Err(err) = persist.await {
+                    tracing::warn!(
+                        bmc_ip_address = %endpoint.address,
+                        error = %err,
+                        "Site Explorer reset BMC through redfish but failed to persist rate-limit timestamp"
+                    );
+                }
 
                 Ok(())
             }
