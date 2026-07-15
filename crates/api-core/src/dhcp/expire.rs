@@ -77,13 +77,13 @@ pub async fn expire_dhcp_lease(
             .await?
         }
         None => {
-            db::machine_interface_address::delete_by_address(
+            !db::machine_interface_address::delete_by_address(
                 &mut txn,
                 ip_address,
                 model::allocation_type::AllocationType::Dhcp,
             )
             .await?
-            .is_some()
+            .is_empty()
         }
     };
 
