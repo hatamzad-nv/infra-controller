@@ -203,21 +203,22 @@ pub async fn assign_static(
     Ok(result)
 }
 
-/// Delete an address allocation of the given type. Returns true if a
-/// matching allocation was found and deleted, false otherwise.
+/// Delete an address allocation of the given type. Returns the interface that
+/// owned the deleted address, or `None` if no matching allocation was found, so
+/// callers can resync that interface's hostname rather than guessing the owner.
 pub async fn delete_by_address(
     txn: &mut PgConnection,
     address: IpAddr,
     allocation_type: AllocationType,
-) -> Result<bool, DatabaseError> {
+) -> Result<Option<MachineInterfaceId>, DatabaseError> {
     let query =
-        "DELETE FROM machine_interface_addresses WHERE address = $1::inet AND allocation_type = $2";
-    sqlx::query(query)
+        "DELETE FROM machine_interface_addresses WHERE address = $1::inet AND allocation_type = $2 RETURNING interface_id";
+    sqlx::query_scalar(query)
         .bind(address)
         .bind(allocation_type)
-        .execute(txn)
+        .fetch_all(txn)
         .await
-        .map(|r| r.rows_affected() > 0)
+        .map(|owners| owners.into_iter().next())
         .map_err(|e| DatabaseError::query(query, e))
 }
 

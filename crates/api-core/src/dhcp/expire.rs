@@ -83,6 +83,7 @@ pub async fn expire_dhcp_lease(
                 model::allocation_type::AllocationType::Dhcp,
             )
             .await?
+            .is_some()
         }
     };
 

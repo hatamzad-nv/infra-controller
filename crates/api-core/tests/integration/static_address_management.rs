@@ -519,9 +519,78 @@ async fn test_assign_and_remove_resync_hostname(
     let mut txn = env.db_txn().await;
     let iface_after_remove = db::machine_interface::find_one(&mut *txn, interface_id).await?;
     assert!(
-        iface_after_remove.hostname.to_lowercase().starts_with("noip"),
+        iface_after_remove
+            .hostname
+            .to_lowercase()
+            .starts_with("noip"),
         "hostname should reset to dormant format after removal, got: {}",
         iface_after_remove.hostname,
+    );
+    txn.commit().await?;
+
+    Ok(())
+}
+
+/// Regression for #3383 (review follow-up): remove-address deletes by IP, so the
+/// interface that owned the removed address may differ from the caller-supplied
+/// interface_id. The resync must target the actual owner, otherwise the real
+/// owner keeps a hostname pinned to the freed IP.
+#[sqlx_test]
+async fn test_remove_resyncs_the_address_owner_not_the_request_id(
+    pool: PgPool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let StaticAddressTestEnv {
+        env, admin_segment, ..
+    } = init(pool).await;
+
+    // Owner interface: give it a static address so its hostname is IP-derived.
+    let owner_mac = MacAddress::from_str("aa:bb:cc:dd:ee:18").unwrap().to_string();
+    let owner = env
+        .api()
+        .discover_dhcp(
+            DhcpDiscovery::builder(&owner_mac, admin_segment.relay_address).tonic_request(),
+        )
+        .await?
+        .into_inner();
+    let owner_id = owner.machine_interface_id.unwrap();
+    let owned_ip = "192.0.2.218";
+    env.api()
+        .assign_static_address(Request::new(AssignStaticAddressRequest {
+            interface_id: Some(owner_id),
+            ip_address: owned_ip.to_string(),
+        }))
+        .await?;
+
+    // A second, unrelated interface whose id we will (incorrectly) pass to
+    // remove-address.
+    let other_mac = MacAddress::from_str("aa:bb:cc:dd:ee:19").unwrap().to_string();
+    let other = env
+        .api()
+        .discover_dhcp(
+            DhcpDiscovery::builder(&other_mac, admin_segment.relay_address).tonic_request(),
+        )
+        .await?
+        .into_inner();
+    let other_id = other.machine_interface_id.unwrap();
+
+    // Remove the owner's IP but pass the *other* interface's id.
+    let resp = env
+        .api()
+        .remove_static_address(Request::new(RemoveStaticAddressRequest {
+            interface_id: Some(other_id),
+            ip_address: owned_ip.to_string(),
+        }))
+        .await?
+        .into_inner();
+    assert_eq!(resp.status(), RemoveStaticAddressStatus::Removed);
+
+    // The owner (which actually lost the address) must be resynced to dormant.
+    let mut txn = env.db_txn().await;
+    let owner_after = db::machine_interface::find_one(&mut *txn, owner_id).await?;
+    assert!(
+        owner_after.hostname.to_lowercase().starts_with("noip"),
+        "the address owner should be resynced to dormant, got: {}",
+        owner_after.hostname,
     );
     txn.commit().await?;
 
