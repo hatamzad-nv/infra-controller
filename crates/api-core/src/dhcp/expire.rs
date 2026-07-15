@@ -57,44 +57,32 @@ pub async fn expire_dhcp_lease(
 
     let mut txn = api.txn_begin().await?;
 
-    // Look up the interface that owns this IP before deleting so we can clear
-    // its hostname afterward. The JOIN in find_by_ip requires the address row
-    // to still exist, so we must do this before the delete.
-    let interface = db::machine_interface::find_by_ip(&mut txn, ip_address).await?;
-
-    // When the caller provides the MAC, scope the delete to the (ip, mac)
-    // pair. Otherwise, just call the address-only variant, which would
-    // be something we would see from an admin-cli call used for deleting
-    // a specific IP allocation.
-    // Determine which interfaces need a hostname resync after the delete. The
-    // mac-scoped variant targets a single (ip, mac) row, so resync the interface
-    // looked up above; the address-only variant can match multiple rows, so
-    // resync every owner it reports rather than dropping all but one.
-    let (deleted, resync_targets) = match mac_address {
+    // When the caller provides the MAC, scope the delete to the (ip, mac) pair.
+    // Otherwise use the address-only variant, which is what an admin-cli call
+    // deleting a specific IP allocation would hit. Either way, both variants
+    // return the interfaces whose rows were actually deleted, so we resync those
+    // authoritative owners rather than a separately looked-up interface (which
+    // could differ if ownership changed or multiple rows share the address).
+    let resync_targets = match mac_address {
         Some(mac) => {
-            let deleted = db::machine_interface_address::delete_by_address_and_mac(
+            db::machine_interface_address::delete_by_address_and_mac(
                 &mut txn,
                 ip_address,
                 mac,
                 model::allocation_type::AllocationType::Dhcp,
             )
-            .await?;
-            let targets = match (deleted, &interface) {
-                (true, Some(iface)) => vec![iface.id],
-                _ => Vec::new(),
-            };
-            (deleted, targets)
+            .await?
         }
         None => {
-            let owners = db::machine_interface_address::delete_by_address(
+            db::machine_interface_address::delete_by_address(
                 &mut txn,
                 ip_address,
                 model::allocation_type::AllocationType::Dhcp,
             )
-            .await?;
-            (!owners.is_empty(), owners)
+            .await?
         }
     };
+    let deleted = !resync_targets.is_empty();
 
     // Sync the hostname to the remaining address state so DNS stays
     // consistent: the IP style re-derives (and re-derives again from the next

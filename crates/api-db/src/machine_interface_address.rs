@@ -225,26 +225,28 @@ pub async fn delete_by_address(
 /// Delete an address allocation for a given (ip, mac) pair, which
 /// of course only actually deletes when the pair matches.
 ///
-/// Returns true if a matching allocation was found and deleted.
+/// Returns the interfaces that owned the deleted allocations (normally one,
+/// empty if the pair matched nothing) so callers can resync each one's hostname
+/// against the authoritative deleted rows rather than a separate lookup.
 pub async fn delete_by_address_and_mac(
     txn: &mut PgConnection,
     address: IpAddr,
     mac_address: mac_address::MacAddress,
     allocation_type: AllocationType,
-) -> Result<bool, DatabaseError> {
+) -> Result<Vec<MachineInterfaceId>, DatabaseError> {
     let query = "DELETE FROM machine_interface_addresses mia
         USING machine_interfaces mi
         WHERE mia.interface_id = mi.id
           AND mia.address = $1::inet
           AND mia.allocation_type = $2
-          AND mi.mac_address = $3::macaddr";
-    sqlx::query(query)
+          AND mi.mac_address = $3::macaddr
+        RETURNING mia.interface_id";
+    sqlx::query_scalar(query)
         .bind(address)
         .bind(allocation_type)
         .bind(mac_address)
-        .execute(txn)
+        .fetch_all(txn)
         .await
-        .map(|r| r.rows_affected() > 0)
         .map_err(|e| DatabaseError::query(query, e))
 }
 
