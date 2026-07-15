@@ -66,24 +66,33 @@ pub async fn expire_dhcp_lease(
     // pair. Otherwise, just call the address-only variant, which would
     // be something we would see from an admin-cli call used for deleting
     // a specific IP allocation.
-    let deleted = match mac_address {
+    // Determine which interfaces need a hostname resync after the delete. The
+    // mac-scoped variant targets a single (ip, mac) row, so resync the interface
+    // looked up above; the address-only variant can match multiple rows, so
+    // resync every owner it reports rather than dropping all but one.
+    let (deleted, resync_targets) = match mac_address {
         Some(mac) => {
-            db::machine_interface_address::delete_by_address_and_mac(
+            let deleted = db::machine_interface_address::delete_by_address_and_mac(
                 &mut txn,
                 ip_address,
                 mac,
                 model::allocation_type::AllocationType::Dhcp,
             )
-            .await?
+            .await?;
+            let targets = match (deleted, &interface) {
+                (true, Some(iface)) => vec![iface.id],
+                _ => Vec::new(),
+            };
+            (deleted, targets)
         }
         None => {
-            !db::machine_interface_address::delete_by_address(
+            let owners = db::machine_interface_address::delete_by_address(
                 &mut txn,
                 ip_address,
                 model::allocation_type::AllocationType::Dhcp,
             )
-            .await?
-            .is_empty()
+            .await?;
+            (!owners.is_empty(), owners)
         }
     };
 
@@ -91,8 +100,8 @@ pub async fn expire_dhcp_lease(
     // consistent: the IP style re-derives (and re-derives again from the next
     // allocated IP on rediscovery); the other styles keep their names and only
     // drop out of DNS while addressless.
-    if deleted && let Some(iface) = interface {
-        db::machine_interface::sync_hostname_after_address_change(&mut txn, iface.id).await?;
+    for iface_id in &resync_targets {
+        db::machine_interface::sync_hostname_after_address_change(&mut txn, *iface_id).await?;
     }
 
     txn.commit().await?;

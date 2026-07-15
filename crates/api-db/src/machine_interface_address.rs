@@ -213,8 +213,7 @@ pub async fn delete_by_address(
     address: IpAddr,
     allocation_type: AllocationType,
 ) -> Result<Vec<MachineInterfaceId>, DatabaseError> {
-    let query =
-        "DELETE FROM machine_interface_addresses WHERE address = $1::inet AND allocation_type = $2 RETURNING interface_id";
+    let query = "DELETE FROM machine_interface_addresses WHERE address = $1::inet AND allocation_type = $2 RETURNING interface_id";
     sqlx::query_scalar(query)
         .bind(address)
         .bind(allocation_type)

@@ -544,7 +544,9 @@ async fn test_remove_resyncs_the_address_owner_not_the_request_id(
     } = init(pool).await;
 
     // Owner interface: give it a static address so its hostname is IP-derived.
-    let owner_mac = MacAddress::from_str("aa:bb:cc:dd:ee:18").unwrap().to_string();
+    let owner_mac = MacAddress::from_str("aa:bb:cc:dd:ee:18")
+        .unwrap()
+        .to_string();
     let owner = env
         .api()
         .discover_dhcp(
@@ -563,7 +565,9 @@ async fn test_remove_resyncs_the_address_owner_not_the_request_id(
 
     // A second, unrelated interface whose id we will (incorrectly) pass to
     // remove-address.
-    let other_mac = MacAddress::from_str("aa:bb:cc:dd:ee:19").unwrap().to_string();
+    let other_mac = MacAddress::from_str("aa:bb:cc:dd:ee:19")
+        .unwrap()
+        .to_string();
     let other = env
         .api()
         .discover_dhcp(
