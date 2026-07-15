@@ -185,24 +185,29 @@ pub async fn remove_static_address(
     let ip_address: std::net::IpAddr = req.ip_address.parse()?;
 
     let mut txn = api.txn_begin().await?;
-    let removed_owners = db::machine_interface_address::delete_by_address(
+    // Scope the delete to the caller's interface so remove-address only ever
+    // removes that interface's own address, matching the command's contract
+    // ("remove the address from a machine interface"). A mismatched interface_id
+    // deletes nothing and returns NotFound rather than removing another
+    // interface's row that happens to hold the same IP.
+    let deleted = db::machine_interface_address::delete_by_interface_and_address(
         &mut txn,
+        interface_id,
         ip_address,
         AllocationType::Static,
     )
     .await?;
 
-    // Re-derive the hostname/domain of every interface that actually owned a
-    // removed address, matching the DHCP lease-expiry path. delete_by_address
-    // deletes by IP, so the owner may differ from the request's interface_id;
-    // resyncing the wrong one would leave the real owner with a stale hostname.
-    for owner_id in &removed_owners {
-        db::machine_interface::sync_hostname_after_address_change(&mut txn, *owner_id).await?;
+    // Re-derive the interface's hostname/domain now that its address is gone,
+    // matching the DHCP lease-expiry path. Without this the interface keeps a
+    // hostname pinned to the removed IP.
+    if deleted {
+        db::machine_interface::sync_hostname_after_address_change(&mut txn, interface_id).await?;
     }
 
     txn.commit().await?;
 
-    let status = if !removed_owners.is_empty() {
+    let status = if deleted {
         tracing::info!(machine_interface_id = %interface_id, %ip_address, "Removed static address");
         rpc::RemoveStaticAddressStatus::Removed
     } else {

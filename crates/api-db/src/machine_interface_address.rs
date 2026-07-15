@@ -150,6 +150,27 @@ pub async fn delete_by_interface_family(
         .map_err(|e| DatabaseError::query(query, e))
 }
 
+/// Delete a specific address from a specific interface. Returns true if a
+/// matching row was deleted. Scoping by `interface_id` ensures an operator
+/// remove-address call only removes the caller's own address, never another
+/// interface's row that happens to hold the same IP.
+pub async fn delete_by_interface_and_address(
+    txn: &mut PgConnection,
+    interface_id: MachineInterfaceId,
+    address: IpAddr,
+    allocation_type: AllocationType,
+) -> Result<bool, DatabaseError> {
+    let query = "DELETE FROM machine_interface_addresses WHERE interface_id = $1 AND address = $2::inet AND allocation_type = $3";
+    sqlx::query(query)
+        .bind(interface_id)
+        .bind(address)
+        .bind(allocation_type)
+        .execute(txn)
+        .await
+        .map(|r| r.rows_affected() > 0)
+        .map_err(|e| DatabaseError::query(query, e))
+}
+
 /// Insert a new address for an interface with the given allocation type.
 pub async fn insert(
     txn: &mut PgConnection,

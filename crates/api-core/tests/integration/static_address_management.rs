@@ -531,12 +531,11 @@ async fn test_assign_and_remove_resync_hostname(
     Ok(())
 }
 
-/// Regression for #3383 (review follow-up): remove-address deletes by IP, so the
-/// interface that owned the removed address may differ from the caller-supplied
-/// interface_id. The resync must target the actual owner, otherwise the real
-/// owner keeps a hostname pinned to the freed IP.
+/// Regression for #3383 (review follow-up): remove-address is scoped to the
+/// caller's interface. Passing an interface_id that does not own the IP must not
+/// remove another interface's address — it returns NotFound and changes nothing.
 #[sqlx_test]
-async fn test_remove_resyncs_the_address_owner_not_the_request_id(
+async fn test_remove_with_mismatched_interface_id_is_rejected(
     pool: PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let StaticAddressTestEnv {
@@ -563,6 +562,12 @@ async fn test_remove_resyncs_the_address_owner_not_the_request_id(
         }))
         .await?;
 
+    let mut txn = env.db_txn().await;
+    let owner_hostname_before = db::machine_interface::find_one(&mut *txn, owner_id)
+        .await?
+        .hostname;
+    txn.commit().await?;
+
     // A second, unrelated interface whose id we will (incorrectly) pass to
     // remove-address.
     let other_mac = MacAddress::from_str("aa:bb:cc:dd:ee:19")
@@ -586,17 +591,27 @@ async fn test_remove_resyncs_the_address_owner_not_the_request_id(
         }))
         .await?
         .into_inner();
-    assert_eq!(resp.status(), RemoveStaticAddressStatus::Removed);
+    assert_eq!(resp.status(), RemoveStaticAddressStatus::NotFound);
 
-    // The owner (which actually lost the address) must be resynced to dormant.
+    // The owner still holds its address and keeps its IP-derived hostname; the
+    // mismatched interface was not touched.
+    let addrs = env
+        .api()
+        .find_interface_addresses(Request::new(FindInterfaceAddressesRequest {
+            interface_id: Some(owner_id),
+        }))
+        .await?
+        .into_inner();
+    assert_eq!(addrs.addresses.len(), 1);
+    assert_eq!(addrs.addresses[0].address, owned_ip);
+
     let mut txn = env.db_txn().await;
     let owner_after = db::machine_interface::find_one(&mut *txn, owner_id).await?;
-    assert!(
-        owner_after.hostname.to_lowercase().starts_with("noip"),
-        "the address owner should be resynced to dormant, got: {}",
-        owner_after.hostname,
-    );
     txn.commit().await?;
+    assert_eq!(
+        owner_after.hostname, owner_hostname_before,
+        "the owner's hostname must be unchanged after a mismatched remove"
+    );
 
     Ok(())
 }
