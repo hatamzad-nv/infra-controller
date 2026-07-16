@@ -624,15 +624,14 @@ impl Ping for HbnExecPinger {
 /// Parse ping standard output to valid dpu ping result,
 /// including number of successful pings and average latency.
 pub fn parse_ping_stdout(dpu_info: DpuInfo, stdout: &str) -> Result<DpuPingResult, eyre::Report> {
-    let summary_re = Regex::new(r"(\d+) packets transmitted, (\d+) received, (\d+)% packet loss")?;
+    let summary_re = Regex::new(
+        r"(\d+) packets transmitted, (\d+) received,(?:\s*\+\d+ errors,)? (\d+)% packet loss",
+    )?;
     let rtt_re = Regex::new(r"rtt min/avg/max/mdev = [\d\.]+/([\d\.]+)/[\d\.]+/[\d\.]+ ms")?;
 
-    let mut lines_iter = stdout.lines().rev();
-    let rtt_line = lines_iter
-        .next()
-        .ok_or_else(|| eyre::eyre!("failed to find RTT line"))?;
-    let summary_line = lines_iter
-        .next()
+    let summary_line = stdout
+        .lines()
+        .find(|l| summary_re.is_match(l))
         .ok_or_else(|| eyre::eyre!("failed to find summary line"))?;
 
     let success_count = summary_re
@@ -648,10 +647,15 @@ pub fn parse_ping_stdout(dpu_info: DpuInfo, stdout: &str) -> Result<DpuPingResul
         });
     }
 
+    let rtt_line = stdout
+        .lines()
+        .find(|l| rtt_re.is_match(l))
+        .ok_or_else(|| eyre::eyre!("failed to find RTT line"))?;
+
     let latency = rtt_re
         .captures(rtt_line)
         .and_then(|caps| caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok()))
-        .ok_or_else(|| eyre::eyre!("failed to average latency"))?;
+        .ok_or_else(|| eyre::eyre!("failed to parse average latency"))?;
 
     Ok(DpuPingResult {
         dpu_info,
@@ -677,5 +681,76 @@ pub enum NetworkMonitorError {
 impl fmt::Display for NetworkMonitorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self, f)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::IpAddr;
+
+    use carbide_uuid::machine::{MachineId, MachineIdSource, MachineType};
+
+    use super::*;
+
+    fn test_dpu_info() -> DpuInfo {
+        DpuInfo {
+            id: MachineId::new(
+                MachineIdSource::ProductBoardChassisSerial,
+                [0; 32],
+                MachineType::Host,
+            ),
+            ip: "127.0.0.1".parse::<IpAddr>().unwrap(),
+        }
+    }
+
+    #[test]
+    fn parse_ping_stdout_cases() {
+        struct Case {
+            stdout: &'static str,
+            expected_success_count: u32,
+            expected_latency_us: Option<u64>,
+        }
+
+        let cases = [
+            Case {
+                stdout: "PING 10.0.0.1 (10.0.0.1) 56(84) bytes of data.\n\
+                         --- 10.0.0.1 ping statistics ---\n\
+                         4 packets transmitted, 0 received, 100% packet loss, time 3003ms\n",
+                expected_success_count: 0,
+                expected_latency_us: None,
+            },
+            Case {
+                stdout: "PING 10.0.0.1 (10.0.0.1) 56(84) bytes of data.\n\
+                         --- 10.0.0.1 ping statistics ---\n\
+                         4 packets transmitted, 2 received, 50% packet loss, time 3003ms\n\
+                         rtt min/avg/max/mdev = 0.100/0.250/0.400/0.150 ms\n",
+                expected_success_count: 2,
+                expected_latency_us: Some(250),
+            },
+            Case {
+                stdout: "PING 10.0.0.1 (10.0.0.1) 56(84) bytes of data.\n\
+                         --- 10.0.0.1 ping statistics ---\n\
+                         4 packets transmitted, 4 received, 0% packet loss, time 3003ms\n\
+                         rtt min/avg/max/mdev = 0.100/0.250/0.400/0.150 ms\n",
+                expected_success_count: 4,
+                expected_latency_us: Some(250),
+            },
+            Case {
+                stdout: "PING 10.0.0.1 (10.0.0.1) 56(84) bytes of data.\n\
+                         --- 10.0.0.1 ping statistics ---\n\
+                         4 packets transmitted, 0 received, +4 errors, 100% packet loss, time 3003ms\n",
+                expected_success_count: 0,
+                expected_latency_us: None,
+            },
+        ];
+
+        for case in &cases {
+            let result = parse_ping_stdout(test_dpu_info(), case.stdout).unwrap();
+            assert_eq!(result.success_count, case.expected_success_count);
+            assert_eq!(
+                result.average_latency.map(|d| d.as_micros() as u64),
+                case.expected_latency_us,
+            );
+        }
     }
 }
