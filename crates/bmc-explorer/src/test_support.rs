@@ -47,6 +47,18 @@ use crate::{
 ///
 /// Not part of the production API: it re-runs the chassis/system exploration and
 /// is only meaningful against a mock BMC.
+/// Runs only chassis exploration and returns the explored chassis ids.
+///
+/// Lets tests assert which chassis survive exploration without running a full
+/// report, which for some platforms (e.g. Supermicro) also requires
+/// manager/system OEM data that minimal mock profiles do not serve. Not part of
+/// the production API; only meaningful against a mock BMC.
+pub async fn explore_chassis_ids<B: Bmc>(root: &ServiceRoot<B>) -> Result<Vec<String>, Error<B>> {
+    let config = build_chassis_explore_config(root);
+    let explored = ExploredChassisCollection::explore(root, &config).await?;
+    Ok(explored.to_model().into_iter().map(|c| c.id).collect())
+}
+
 pub async fn detect_hw_type<B: Bmc>(
     mut root: Arc<ServiceRoot<B>>,
     config: &Config<'_, B>,

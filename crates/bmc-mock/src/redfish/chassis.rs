@@ -145,6 +145,10 @@ pub struct SingleChassisConfig {
     pub sensors: Option<Vec<redfish::sensor::Sensor>>,
     pub leak_detectors: Option<Vec<redfish::leak_detector::LeakDetector>>,
     pub chassis_type: Cow<'static, str>,
+    /// When true, the `ChassisType` field is left out of the rendered chassis
+    /// entirely (not merely empty). Models BMCs that omit this Redfish-required
+    /// field, e.g. the Supermicro `SmartNIC` chassis in issue #3715.
+    pub omit_chassis_type: bool,
     pub assembly: Option<serde_json::Value>,
     pub power_supplies: Option<Vec<redfish::power_supply::PowerSupply>>,
     pub oem: Option<serde_json::Value>,
@@ -157,6 +161,7 @@ impl SingleChassisConfig {
         Self {
             id: "".into(),
             chassis_type: "".into(),
+            omit_chassis_type: false,
             serial_number: None,
             manufacturer: None,
             model: None,
@@ -308,8 +313,11 @@ async fn get_chassis(State(state): State<BmcState>, Path(chassis_id): Path<Strin
         .is_some()
         .then_some(redfish::thermal_subsystem::resource(&chassis_id));
 
-    let mut b = builder(&resource(&chassis_id))
-        .chassis_type(&config.chassis_type)
+    let mut b = builder(&resource(&chassis_id));
+    if !config.omit_chassis_type {
+        b = b.chassis_type(&config.chassis_type);
+    }
+    b = b
         .maybe_with(ChassisBuilder::assembly, &assembly)
         .maybe_with(ChassisBuilder::pcie_devices, &pcie_devices)
         .maybe_with(ChassisBuilder::network_adapters, &network_adapters)

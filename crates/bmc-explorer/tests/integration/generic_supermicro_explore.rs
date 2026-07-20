@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 use bmc_explorer::hw::HwType;
-use bmc_explorer::test_support::detect_hw_type;
+use bmc_explorer::test_support::{detect_hw_type, explore_chassis_ids};
 use bmc_mock::test_support;
 use tokio::test;
 
@@ -34,5 +34,27 @@ async fn generic_supermicro_is_not_gb300() {
             .unwrap(),
         Some(HwType::Supermicro),
         "a non-GB300 Supermicro must not be detected as SupermicroGb300",
+    );
+}
+
+/// Regression test for issue #3715: a Supermicro chassis collection containing a
+/// member that omits the Redfish-required `ChassisType` (the `SmartNIC` chassis)
+/// must not abort exploration. The malformed chassis is skipped with a warning
+/// while the healthy chassis still ingests.
+#[test]
+async fn explore_supermicro_skips_chassis_missing_chassis_type() {
+    let h = test_support::generic_supermicro_bmc_with_malformed_chassis().await;
+
+    let chassis_ids = explore_chassis_ids(&h.service_root)
+        .await
+        .expect("chassis exploration must succeed despite one malformed chassis");
+
+    assert!(
+        chassis_ids.iter().any(|id| id == "Self"),
+        "the healthy chassis must still be explored, got {chassis_ids:?}",
+    );
+    assert!(
+        !chassis_ids.iter().any(|id| id == "SmartNIC_1"),
+        "the malformed chassis must be skipped, got {chassis_ids:?}",
     );
 }

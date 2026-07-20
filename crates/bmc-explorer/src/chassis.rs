@@ -78,14 +78,58 @@ impl<B: Bmc> ExploredChassisCollection<B> {
             }
             Ok(result)
         } else {
-            root.chassis()
+            let collection = root
+                .chassis()
                 .await
                 .map_err(Error::nv_redfish("chassis collection"))?
-                .ok_or_else(Error::bmc_not_provided("chassis collection"))?
-                .members()
-                .await
-                .map_err(Error::nv_redfish("chassis collection members"))
+                .ok_or_else(Error::bmc_not_provided("chassis collection"))?;
+            match collection.members().await {
+                Ok(members) => Ok(members),
+                // A single malformed chassis fails the batch `members()` call
+                // and would otherwise abort the whole host exploration. This
+                // happens on some Supermicro BMCs, whose `SmartNIC` chassis
+                // omits the Redfish-required `ChassisType` field. Fall back to
+                // fetching each member individually so the healthy chassis
+                // still ingest, skipping (with a warning) only the ones that
+                // fail to parse.
+                Err(err) => {
+                    tracing::warn!(
+                        error = ?err,
+                        "Chassis collection failed to parse as a batch; retrying \
+                         members individually and skipping malformed ones",
+                    );
+                    Self::fetch_members_skipping_malformed(root).await
+                }
+            }
         }
+    }
+
+    /// Fetches chassis members one at a time, skipping any that fail to parse.
+    ///
+    /// Used as a fallback when the batch `members()` fetch fails on a single
+    /// malformed chassis. Each skipped chassis is logged at `WARN` with its
+    /// `@odata.id` and the parse error, so dropped components are visible in
+    /// the carbide-api logs rather than silently discarded.
+    async fn fetch_members_skipping_malformed(
+        root: &ServiceRoot<B>,
+    ) -> Result<Vec<NvChassis<B>>, Error<B>> {
+        let links = root
+            .chassis_links()
+            .await
+            .map_err(Error::nv_redfish("chassis collection"))?
+            .ok_or_else(Error::bmc_not_provided("chassis collection"))?;
+        let mut result = Vec::with_capacity(links.len());
+        for l in links {
+            match l.upgrade().await {
+                Ok(chassis) => result.push(chassis),
+                Err(err) => tracing::warn!(
+                    chassis = %l.odata_id(),
+                    error = ?err,
+                    "Skipping malformed chassis that failed to parse",
+                ),
+            }
+        }
+        Ok(result)
     }
 
     pub fn to_model(&self) -> Vec<Chassis> {

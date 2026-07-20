@@ -84,8 +84,48 @@ pub fn machine_router_with_injection_store(
     redfish_auth: bool,
     injection: Arc<InjectionStore>,
 ) -> (Router, BmcState) {
+    machine_router_impl(
+        machine_info,
+        callbacks,
+        mat_host_id,
+        redfish_auth,
+        injection,
+        Vec::new(),
+    )
+}
+
+/// Like [`machine_router`] but appends extra chassis to the served chassis
+/// collection. Test-only: lets exploration tests model a BMC whose chassis
+/// collection contains additional (possibly malformed) members, e.g. the
+/// Supermicro `SmartNIC` chassis that omits `ChassisType` in issue #3715.
+pub fn machine_router_with_extra_chassis(
+    machine_info: &MachineInfo,
+    callbacks: Arc<dyn Callbacks>,
+    mat_host_id: String,
+    redfish_auth: bool,
+    extra_chassis: Vec<crate::redfish::chassis::SingleChassisConfig>,
+) -> (Router, BmcState) {
+    machine_router_impl(
+        machine_info,
+        callbacks,
+        mat_host_id,
+        redfish_auth,
+        Arc::new(InjectionStore::new()),
+        extra_chassis,
+    )
+}
+
+fn machine_router_impl(
+    machine_info: &MachineInfo,
+    callbacks: Arc<dyn Callbacks>,
+    mat_host_id: String,
+    redfish_auth: bool,
+    injection: Arc<InjectionStore>,
+    extra_chassis: Vec<crate::redfish::chassis::SingleChassisConfig>,
+) -> (Router, BmcState) {
     let system_config = machine_info.system_config(callbacks.clone());
-    let chassis_config = machine_info.chassis_config();
+    let mut chassis_config = machine_info.chassis_config();
+    chassis_config.chassis.extend(extra_chassis);
     let update_service_config = machine_info.update_service_config();
     let bmc_vendor = machine_info.bmc_vendor();
     let bmc_product = machine_info.bmc_product();

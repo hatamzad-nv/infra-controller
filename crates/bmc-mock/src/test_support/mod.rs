@@ -30,6 +30,7 @@ use crate::machine_info::DpuSettings;
 use crate::{
     BmcState, Callbacks, DpuMachineInfo, HostHardwareType, HostMachineInfo, MachineInfo,
     MockPowerState, SetSystemPowerError, SystemPowerControl, machine_router,
+    machine_router_with_extra_chassis,
 };
 
 pub mod axum_http_client;
@@ -176,6 +177,26 @@ pub async fn generic_supermicro_bmc() -> TestBmcHandle {
         Arc::new(NoopCallbacks),
         "test-host-id".to_string(),
         false,
+    ))
+    .await
+}
+
+/// A Supermicro BMC whose chassis collection contains one healthy chassis plus
+/// an extra chassis that omits the Redfish-required `ChassisType` field. Models
+/// issue #3715, where a malformed `SmartNIC` chassis aborted exploration of the
+/// whole host; used to verify the malformed member is skipped, not fatal.
+pub async fn generic_supermicro_bmc_with_malformed_chassis() -> TestBmcHandle {
+    let malformed_chassis = crate::redfish::chassis::SingleChassisConfig {
+        id: "SmartNIC_1".into(),
+        omit_chassis_type: true,
+        ..crate::redfish::chassis::SingleChassisConfig::defaults()
+    };
+    test_bmc(machine_router_with_extra_chassis(
+        &host_info(HostHardwareType::GenericSupermicro),
+        Arc::new(NoopCallbacks),
+        "test-host-id".to_string(),
+        false,
+        vec![malformed_chassis],
     ))
     .await
 }
