@@ -161,11 +161,11 @@ impl DynamicLog for MetricsScrapeFailed {
 impl DynamicMessage for MetricsScrapeFailed {
     fn message(&self) -> &'static str {
         match self.outcome {
-            ScrapeOutcome::EncoderBusy     => "metrics encoder busy; shedding scrape with 503",
-            ScrapeOutcome::EncoderGone     => "metrics encoder thread is gone; cannot encode metrics",
-            ScrapeOutcome::EncodeFailed    => "failed to encode metrics",
+            ScrapeOutcome::EncoderBusy => "metrics encoder busy; shedding scrape with 503",
+            ScrapeOutcome::EncoderGone => "metrics encoder thread is gone; cannot encode metrics",
+            ScrapeOutcome::EncodeFailed => "failed to encode metrics",
             ScrapeOutcome::EncoderPanicked => "metrics encoder caught a panic while encoding",
-            ScrapeOutcome::ReplyDropped    => "metrics encoder dropped the reply without responding",
+            ScrapeOutcome::ReplyDropped => "metrics encoder dropped the reply without responding",
         }
     }
 }
@@ -530,7 +530,7 @@ async fn handle_metrics_request<B>(
                     .header(CONTENT_LENGTH, buffer.len())
                     .body(Full::new(Bytes::from(buffer)))
                     .unwrap(),
-                Ok(Err(EncodeError::Encode(err))) => {
+                Ok(Err(EncodeError::Encode(_err))) => {
                     emit(MetricsScrapeFailed {
                         outcome: ScrapeOutcome::EncodeFailed,
                     });
