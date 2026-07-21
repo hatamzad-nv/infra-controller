@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 
 use bytes::Bytes;
-use carbide_instrument::{Event, LabelValue, emit};
+use carbide_instrument::{DynamicLog, DynamicMessage, Event, LabelValue, LogAt, emit};
 use carbide_metrics_utils::OtelView;
 use http_body_util::Full;
 use hyper::header::{CONTENT_LENGTH, CONTENT_TYPE};
@@ -140,12 +140,34 @@ enum ScrapeOutcome {
     metric_name = "carbide_metrics_scrape_failures_total",
     component = "metrics-endpoint",
     metric = counter,
-    log = off,
+    log = dynamic,
+    message = dynamic,
     describe = "Number of /metrics scrape failures, by outcome."
 )]
 struct MetricsScrapeFailed {
     #[label]
     outcome: ScrapeOutcome,
+}
+
+impl DynamicLog for MetricsScrapeFailed {
+    fn log_at(&self) -> LogAt {
+        match self.outcome {
+            ScrapeOutcome::EncoderBusy => LogAt::Level(tracing::Level::WARN),
+            _ => LogAt::Level(tracing::Level::ERROR),
+        }
+    }
+}
+
+impl DynamicMessage for MetricsScrapeFailed {
+    fn message(&self) -> &'static str {
+        match self.outcome {
+            ScrapeOutcome::EncoderBusy     => "metrics encoder busy; shedding scrape with 503",
+            ScrapeOutcome::EncoderGone     => "metrics encoder thread is gone; cannot encode metrics",
+            ScrapeOutcome::EncodeFailed    => "failed to encode metrics",
+            ScrapeOutcome::EncoderPanicked => "metrics encoder caught a panic while encoding",
+            ScrapeOutcome::ReplyDropped    => "metrics encoder dropped the reply without responding",
+        }
+    }
 }
 
 /// The reply channel a scrape hands to the encoder thread. The thread sends the encoded
@@ -482,7 +504,6 @@ async fn handle_metrics_request<B>(
                 Err(TrySendError::Full(_)) => {
                     // The single encoder is already busy with a backlog; shed this
                     // scrape rather than pile on more work.
-                    tracing::warn!("metrics encoder busy; shedding scrape with 503");
                     emit(MetricsScrapeFailed {
                         outcome: ScrapeOutcome::EncoderBusy,
                     });
@@ -492,7 +513,6 @@ async fn handle_metrics_request<B>(
                         .unwrap());
                 }
                 Err(TrySendError::Disconnected(_)) => {
-                    tracing::error!("metrics encoder thread is gone; cannot encode metrics");
                     emit(MetricsScrapeFailed {
                         outcome: ScrapeOutcome::EncoderGone,
                     });
@@ -511,7 +531,6 @@ async fn handle_metrics_request<B>(
                     .body(Full::new(Bytes::from(buffer)))
                     .unwrap(),
                 Ok(Err(EncodeError::Encode(err))) => {
-                    tracing::error!(error = %err, "failed to encode metrics");
                     emit(MetricsScrapeFailed {
                         outcome: ScrapeOutcome::EncodeFailed,
                     });
@@ -521,7 +540,6 @@ async fn handle_metrics_request<B>(
                         .unwrap()
                 }
                 Ok(Err(EncodeError::Panicked)) => {
-                    tracing::error!("metrics encoder caught a panic while encoding");
                     emit(MetricsScrapeFailed {
                         outcome: ScrapeOutcome::EncoderPanicked,
                     });
@@ -534,7 +552,6 @@ async fn handle_metrics_request<B>(
                     // The encoder thread dropped the reply without answering — it was told
                     // to stop (shutdown) or otherwise went away. Distinct from a busy or
                     // already-gone encoder above.
-                    tracing::error!("metrics encoder dropped the reply without responding");
                     emit(MetricsScrapeFailed {
                         outcome: ScrapeOutcome::ReplyDropped,
                     });
