@@ -339,6 +339,7 @@ impl TestEnv {
             component_manager: self.test_component_manager.clone(),
             credential_manager: self.test_credential_manager.clone(),
             per_object_metrics_registry: self.per_object_metrics_registry(),
+            per_object_info: None,
         }
     }
 
@@ -1548,6 +1549,7 @@ pub async fn create_test_env_with_overrides(
                 component_manager: test_component_manager.clone(),
                 credential_manager: credential_manager.clone(),
                 per_object_metrics_registry: per_object_metrics_registry.clone(),
+                per_object_info: None,
             }
             .into(),
         )

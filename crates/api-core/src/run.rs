@@ -50,6 +50,10 @@ pub struct CoreRunInputs<'a> {
     pub credential_config: CredentialConfig,
     pub logging: Logging,
     pub meter: opentelemetry::metrics::Meter,
+    /// The dedicated per-object state metrics registry, `None` when the
+    /// opt-in endpoint is disabled. Created (and served) by the composition
+    /// crate; core registers the per-object collectors on it.
+    pub per_object_metrics: Option<prometheus::Registry>,
     pub join_set: &'a mut JoinSet<()>,
     pub admin_ui_routes_builder: Option<AdminUiRoutesBuilder>,
     pub cancel_token: CancellationToken,
@@ -92,6 +96,7 @@ pub async fn run_core(inputs: CoreRunInputs<'_>) -> eyre::Result<()> {
         credential_config,
         logging: tconf,
         meter,
+        per_object_metrics,
         join_set,
         admin_ui_routes_builder,
         cancel_token,
@@ -367,6 +372,7 @@ pub async fn run_core(inputs: CoreRunInputs<'_>) -> eyre::Result<()> {
         carbide_config,
         initial_objects,
         meter,
+        per_object_metrics,
         dynamic_settings,
         redfish_pool,
         nv_redfish_pool,

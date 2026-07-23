@@ -167,6 +167,10 @@ spec:
               containerPort: {{ .Values.service.grpc.port }}
             - name: metrics
               containerPort: {{ .Values.service.metrics.port }}
+            {{- if include "nico-api.perObjectStateMetricsActive" . }}
+            - name: object-metrics
+              containerPort: {{ .Values.service.perObjectStateMetrics.port }}
+            {{- end }}
             - name: profiler
               containerPort: {{ .Values.service.profiler.port }}
           livenessProbe:

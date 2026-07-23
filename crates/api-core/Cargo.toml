@@ -126,6 +126,7 @@ opentelemetry_sdk = { workspace = true, features = [
 ] }
 pkcs1 = { workspace = true }
 p256 = { workspace = true }
+prometheus = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true, default-features = false, features = [

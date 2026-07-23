@@ -1264,6 +1264,7 @@ dependencies = [
  "opentelemetry_sdk",
  "p256 0.14.0-rc.9",
  "pkcs1 0.7.5",
+ "prometheus",
  "prometheus-text-parser",
  "prost",
  "rand 0.10.1",
@@ -2096,6 +2097,7 @@ dependencies = [
  "carbide-health-report",
  "carbide-utils",
  "opentelemetry 0.32.0",
+ "prometheus",
 ]
 
 [[package]]
@@ -2454,6 +2456,7 @@ dependencies = [
  "mac_address",
  "mockall",
  "opentelemetry 0.32.0",
+ "prometheus",
  "prost",
  "prost-types",
  "regex",
@@ -11032,6 +11035,7 @@ dependencies = [
  "async-trait",
  "carbide-api-db",
  "carbide-api-model",
+ "carbide-health-metrics",
  "carbide-macros",
  "carbide-sqlx-testing",
  "carbide-utils",
@@ -11042,6 +11046,7 @@ dependencies = [
  "futures",
  "futures-util",
  "opentelemetry 0.32.0",
+ "prometheus",
  "rand 0.10.1",
  "serde",
  "serde_json",
