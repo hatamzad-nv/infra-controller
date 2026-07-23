@@ -346,3 +346,51 @@ fn desired_power_state_value_enum() {
         }
     );
 }
+
+// erase-metadata routes to the EraseMetadata variant. Each row yields
+// (bmc_mac, dry_run, confirm); the required --bmc-mac is missing in the failing row.
+#[test]
+fn parse_erase_metadata_routes_to_erase_metadata() {
+    scenarios!(
+        run = |argv| {
+            Cmd::try_parse_from(argv.iter().copied())
+                .map(|cmd| match cmd {
+                    Cmd::EraseMetadata(args) => (args.bmc_mac, args.dry_run, args.confirm),
+                    _ => panic!("expected EraseMetadata variant"),
+                })
+                .map_err(drop)
+        };
+        "with bmc mac" {
+            &[
+                "managed-host",
+                "erase-metadata",
+                "--bmc-mac",
+                "aa:bb:cc:dd:ee:ff",
+            ][..] => Yields(("aa:bb:cc:dd:ee:ff".to_string(), false, false)),
+        }
+
+        "with bmc mac and dry-run" {
+            &[
+                "managed-host",
+                "erase-metadata",
+                "--bmc-mac",
+                "aa:bb:cc:dd:ee:ff",
+                "--dry-run",
+            ][..] => Yields(("aa:bb:cc:dd:ee:ff".to_string(), true, false)),
+        }
+
+        "with bmc mac and confirm" {
+            &[
+                "managed-host",
+                "erase-metadata",
+                "--bmc-mac",
+                "aa:bb:cc:dd:ee:ff",
+                "--confirm",
+            ][..] => Yields(("aa:bb:cc:dd:ee:ff".to_string(), false, true)),
+        }
+
+        "missing required bmc mac" {
+            &["managed-host", "erase-metadata"][..] => Fails,
+        }
+    );
+}

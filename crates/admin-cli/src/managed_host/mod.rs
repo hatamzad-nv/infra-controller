@@ -16,6 +16,7 @@
  */
 
 mod debug_bundle;
+mod erase_metadata;
 mod maintenance;
 mod power_options;
 mod quarantine;
@@ -64,4 +65,8 @@ pub enum Cmd {
     SetPrimaryDpu(set_primary_dpu::Args),
     #[clap(about = "Download debug bundle with logs for a specific host")]
     DebugBundle(debug_bundle::Args),
+    #[clap(
+        about = "Erase all NICo-owned site records for a server BMC MAC address (does not touch expected machines)"
+    )]
+    EraseMetadata(erase_metadata::Args),
 }
